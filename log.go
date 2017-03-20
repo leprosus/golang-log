@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	logger map[string]*gslog.Logger = map[string]*gslog.Logger{}
+	logger *gslog.Logger
 	level int = gslog.DEBUG
 	path = "./log"
 )
@@ -36,21 +36,19 @@ func SetPath(newPath string) {
 	path = newPath
 }
 
-func getLogger(fullFuncName string) *gslog.Logger {
-	if logger[fullFuncName] == nil {
-		timestamp := time.Now().Format("2006-01-02")
-		writer := gslog.WriterNew(path + "/" + timestamp + ".log")
+func getLogger() *gslog.Logger {
+	timestamp := time.Now().Format("2006-01-02")
+	writer := gslog.WriterNew(path + "/" + timestamp + ".log")
 
-		logger[fullFuncName] = gslog.GetLogger(fullFuncName)
-		logger[fullFuncName].SetLevel(level)
-		logger[fullFuncName].SetWriter(writer)
-	}
+	logger = gslog.GetLogger(getFuncName())
+	logger.SetLevel(level)
+	logger.SetWriter(writer)
 
-	return logger[fullFuncName]
+	return logger
 }
 
-func GetFuncName() string {
-	_, scriptName, line, _ := runtime.Caller(1)
+func getFuncName() string {
+	_, scriptName, line, _ := runtime.Caller(3)
 
 	appPath, _ := os.Getwd()
 	appPath += string(os.PathSeparator)
@@ -58,22 +56,22 @@ func GetFuncName() string {
 	return fmt.Sprintf("%s:%d", strings.Replace(scriptName, appPath, "", -1), line)
 }
 
-func Debug(fullFuncName string, line string) {
-	getLogger(fullFuncName).Debug(line)
+func Debug(line string) {
+	getLogger().Debug(line)
 }
 
-func Info(fullFuncName string, line string) {
-	getLogger(fullFuncName).Info(line)
+func Info(line string) {
+	getLogger().Info(line)
 }
 
-func Warn(fullFuncName string, line string) {
-	getLogger(fullFuncName).Warn(line)
+func Warn(line string) {
+	getLogger().Warn(line)
 }
 
-func Error(fullFuncName string, line string) {
-	getLogger(fullFuncName).Error(line)
+func Error(line string) {
+	getLogger().Error(line)
 }
 
-func Fatal(fullFuncName string, line string) {
-	getLogger(fullFuncName).Fatal(line)
+func Fatal(line string) {
+	getLogger().Fatal(line)
 }
