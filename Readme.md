@@ -22,7 +22,10 @@ log.SizeLimit(2 * log.megaByte)
 
 // Set log output to stdout 
 log.Stdout(true)
+```
 
+## Usage
+```go
 // Write debug line
 // Usually use to log debug data
 log.Debug("debug line")
