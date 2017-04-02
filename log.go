@@ -79,7 +79,7 @@ func Level(level int) {
 }
 
 func LevelAsString(level string) {
-	switch level {
+	switch strings.ToLower(level) {
 	case "debug":
 		Level(DEBUG)
 	case "info":
