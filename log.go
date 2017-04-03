@@ -135,7 +135,9 @@ func getFilePath(appendLength int) (path string, err error) {
 
 	for isFull {
 		info, err := os.Stat(path)
-		if err != nil && !os.IsNotExist(err) {
+		if os.IsNotExist(err) {
+			return path, nil
+		} else if err != nil {
 			return path, err
 		}
 
