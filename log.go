@@ -135,7 +135,7 @@ func getFilePath(appendLength int) (path string, err error) {
 
 	for isFull {
 		info, err := os.Stat(path)
-		if err != nil {
+		if err != nil && !os.IsNotExist(err) {
 			return path, err
 		}
 
@@ -153,7 +153,9 @@ func getFilePath(appendLength int) (path string, err error) {
 
 func getMaxIncrement(path string) (int, error) {
 	matches, err := filepath.Glob(path + ".*")
-	if err != nil {
+	if os.IsNotExist(err) {
+		return 0, nil
+	} else if err != nil {
 		return 0, err
 	}
 
@@ -184,7 +186,7 @@ func write(level int, message string) {
 		logLine := log.format(level, getFuncName(), message)
 		filePath, err := getFilePath(len(logLine))
 		if err != nil {
-			fmt.Printf("Can't scan log directory %s. Catch error %s", log.path, err.Error())
+			fmt.Printf("Can't scan log directory %s. Catch error %s\n", log.path, err.Error())
 
 			return
 		}
@@ -198,14 +200,14 @@ func write(level int, message string) {
 		defer mutex.Unlock()
 
 		if err != nil {
-			fmt.Printf("Can't write log to file %s. Catch error %s", filePath, err.Error())
+			fmt.Printf("Can't write log to file %s. Catch error %s\n", filePath, err.Error())
 
 			return
 		}
 
-		_, err = file.WriteString(logLine)
+		_, err = file.WriteString(logLine + "\n")
 		if err != nil {
-			fmt.Printf("Can't write log to file %s. Catch error %s", filePath, err.Error())
+			fmt.Printf("Can't write log to file %s. Catch error %s\n", filePath, err.Error())
 
 			return
 		}
