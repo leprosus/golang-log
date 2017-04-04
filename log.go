@@ -184,7 +184,7 @@ func getMaxIncrement(path string) (int, error) {
 }
 
 func write(level int, message string) {
-	if log.level >= level {
+	if log.level <= level {
 		logLine := log.format(level, getFuncName(), message)
 		filePath, err := getFilePath(len(logLine))
 		if err != nil {
