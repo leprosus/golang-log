@@ -120,7 +120,7 @@ func getFilePath(appendLength int) (path string, err error) {
 	timestamp := time.Now().Format("2006-01-02")
 	basePath := log.path + string(os.PathSeparator) + timestamp + ".log"
 
-	increment, err := getMaxIncrement(path)
+	increment, err := getMaxIncrement(log.path)
 	if err != nil {
 		return basePath, err
 	}
