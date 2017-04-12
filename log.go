@@ -13,8 +13,8 @@ import (
 
 const (
 	DEBUG = 1
-	INFO = 2
-	WARN = 3
+	INFO  = 2
+	WARN  = 3
 	ERROR = 4
 	FATAL = 5
 )
@@ -36,7 +36,7 @@ type logger struct {
 var (
 	log logger = logger{
 		level: DEBUG,
-		path: "./log",
+		path:  "./log",
 		format: func(level int, line string, message string) string {
 			now := time.Now().Format("2006-01-02 15:04:05")
 			levelStr := "DEBUG"
@@ -62,7 +62,7 @@ var (
 
 			return strings.Join(data, "\t")
 		},
-		size: megaByte,
+		size:   megaByte,
 		stdout: false}
 
 	mutex = &sync.Mutex{}
@@ -141,7 +141,7 @@ func getFilePath(appendLength int) (path string, err error) {
 			return path, err
 		}
 
-		if info.Size() + int64(appendLength) > log.size {
+		if info.Size()+int64(appendLength) > log.size {
 			increment++
 
 			path = fmt.Sprintf("%s.%d", basePath, increment)
@@ -195,21 +195,21 @@ func write(level int, message string) {
 
 		mutex.Lock()
 
-		file, err := os.OpenFile(filePath, os.O_APPEND | os.O_CREATE | os.O_WRONLY, 0600)
+		file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 
 		defer file.Sync()
 		defer file.Close()
 		defer mutex.Unlock()
 
 		if err != nil {
-			fmt.Printf("Can't write log to file %s. Catch error %s\n", filePath, err.Error())
+			fmt.Printf("Can't write log to file %s. Catch error: %s\n", filePath, err.Error())
 
 			return
 		}
 
 		_, err = file.WriteString(logLine + "\n")
 		if err != nil {
-			fmt.Printf("Can't write log to file %s. Catch error %s\n", filePath, err.Error())
+			fmt.Printf("Can't write log to file %s. Catch error: %s\n", filePath, err.Error())
 
 			return
 		}
