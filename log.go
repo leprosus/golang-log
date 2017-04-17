@@ -9,6 +9,7 @@ import (
 	"sync"
 	"path/filepath"
 	"strconv"
+	"io"
 )
 
 const (
@@ -116,37 +117,24 @@ func getFuncName() string {
 	return fmt.Sprintf("%s:%d", strings.Replace(scriptName, appPath, "", -1), line)
 }
 
-func getFilePath(appendLength int) (path string, err error) {
+func getFilePath(appendLength int) (string, error) {
 	timestamp := time.Now().Format("2006-01-02")
-	basePath := log.path + string(os.PathSeparator) + timestamp + ".log"
+	path := log.path + string(os.PathSeparator) + timestamp + ".log"
 
-	increment, err := getMaxIncrement(log.path)
-	if err != nil {
-		return basePath, err
-	}
-
-	if increment > 0 {
-		path = fmt.Sprintf("%s.%d", basePath, increment)
+	info, err := os.Stat(path)
+	if err != nil && os.IsNotExist(err) {
+		return path, nil
+	} else if info.Size()+int64(appendLength) <= log.size {
+		return path, nil
 	} else {
-		path = basePath
-	}
-
-	isFull := true
-
-	for isFull {
-		info, err := os.Stat(path)
-		if os.IsNotExist(err) {
-			return path, nil
-		} else if err != nil {
+		increment, err := getMaxIncrement(path)
+		if err != nil {
 			return path, err
 		}
 
-		if info.Size()+int64(appendLength) > log.size {
-			increment++
-
-			path = fmt.Sprintf("%s.%d", basePath, increment)
-		} else {
-			isFull = false
+		err = moveFile(path, fmt.Sprintf("%s.%d", path, increment+1))
+		if err != nil {
+			return path, err
 		}
 	}
 
@@ -183,12 +171,38 @@ func getMaxIncrement(path string) (int, error) {
 	return 0, nil
 }
 
+func moveFile(sourceFilePath string, destinationFilePath string) (error) {
+	source, err := os.Open(sourceFilePath)
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+
+	destination, err := os.Create(destinationFilePath)
+	if err != nil {
+		return err
+	}
+	defer destination.Close()
+
+	_, err = io.Copy(destination, source)
+	if err != nil {
+		return err
+	}
+
+	err = os.Remove(sourceFilePath)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func write(level int, message string) {
 	if log.level <= level {
 		logLine := log.format(level, getFuncName(), message)
 		filePath, err := getFilePath(len(logLine))
 		if err != nil {
-			fmt.Printf("Can't scan log directory %s. Catch error %s\n", log.path, err.Error())
+			fmt.Printf("Can't access to log file %s. Catch error %s\n", log.path, err.Error())
 
 			return
 		}
