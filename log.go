@@ -253,3 +253,23 @@ func Error(message string) {
 func Fatal(message string) {
 	write(FATAL, message)
 }
+
+func DebugFmt(message string, args ...interface{}) {
+	write(DEBUG, fmt.Sprintf(message, args...))
+}
+
+func InfoFmt(message string, args ...interface{}) {
+	write(INFO, fmt.Sprintf(message, args...))
+}
+
+func WarnFmt(message string, args ...interface{}) {
+	write(WARN, fmt.Sprintf(message, args...))
+}
+
+func ErrorFmt(message string, args ...interface{}) {
+	write(ERROR, fmt.Sprintf(message, args...))
+}
+
+func FatalFmt(message string, args ...interface{}) {
+	write(FATAL, fmt.Sprintf(message, args...))
+}

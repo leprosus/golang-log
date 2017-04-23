@@ -56,7 +56,12 @@ log.Fatal("fatal line")
 * log.SizeLimit(2 * log.megaByte) - sets log file size limit
 * log.Stdout(true) - sets log output to stdout
 * log.Debug("debug line") - writes message with debug data
+* log.DebugFmt("debug line %d", 1) - writes message with debug data
 * log.Info("info line") - writes message with information about state or similar
+* log.InfoFmt("info line %d", 1) - writes message with information about state or similar
 * log.Warn("warn line") - usually use to write warning message about unexpected application state (ex.: brudforce, incorrect request, bad loging&password authorization) 
+* log.WarnFmt("warn line %d", 1) - usually use to write warning message about unexpected application state (ex.: brudforce, incorrect request, bad loging&password authorization) 
 * log.Error("error line") - use only in a case of a return error what doesn't effect application run
+* log.ErrorFmt("error line %d", 1) - use only in a case of a return error what doesn't effect application run
 * log.Fatal("fatal line") - use only in a case of a return error what do effect application run
+* log.FatalFmt("fatal line %d", 1) - use only in a case of a return error what do effect application run
