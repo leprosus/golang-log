@@ -1,15 +1,14 @@
 package log
 
 import (
-	"time"
-	"runtime"
-	"os"
-	"strings"
 	"fmt"
-	"sync"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
-	"io"
+	"strings"
+	"sync"
+	"time"
 )
 
 const (
@@ -26,16 +25,22 @@ const (
 	gigaByte = megaByte * 1024
 )
 
-type logger struct {
-	level  int
-	path   string
-	format func(level int, line string, message string) string
-	size   int64
-	stdout bool
+type config struct {
+	level   int
+	path    string
+	format  func(level int, line string, message string) string
+	size    int64
+	logChan chan log
+	stdout  bool
+}
+
+type log struct {
+	level   int
+	message string
 }
 
 var (
-	log logger = logger{
+	cfg = config{
 		level: DEBUG,
 		path:  "./log",
 		format: func(level int, line string, message string) string {
@@ -63,19 +68,21 @@ var (
 
 			return strings.Join(data, "\t")
 		},
-		size:   megaByte,
-		stdout: false}
+		size:    megaByte,
+		logChan: make(chan log, 100),
+		stdout:  false}
 
-	mutex = &sync.Mutex{}
+	once = &sync.Once{}
+	wg   = &sync.WaitGroup{}
 )
 
 func Path(path string) {
-	log.path = path
+	cfg.path = path
 }
 
 func Level(level int) {
 	if level > 0 && level < 6 {
-		log.level = level
+		cfg.level = level
 	}
 }
 
@@ -97,15 +104,15 @@ func LevelAsString(level string) {
 }
 
 func Format(format func(level int, line string, message string) string) {
-	log.format = format
+	cfg.format = format
 }
 
 func SizeLimit(size int64) {
-	log.size = size
+	cfg.size = size
 }
 
 func Stdout(state bool) {
-	log.stdout = state
+	cfg.stdout = state
 }
 
 func getFuncName() string {
@@ -119,12 +126,12 @@ func getFuncName() string {
 
 func getFilePath(appendLength int) (string, error) {
 	timestamp := time.Now().Format("2006-01-02")
-	path := log.path + string(os.PathSeparator) + timestamp + ".log"
+	path := cfg.path + string(os.PathSeparator) + timestamp + ".log"
 
 	info, err := os.Stat(path)
 	if err != nil && os.IsNotExist(err) {
 		return path, nil
-	} else if info.Size()+int64(appendLength) <= log.size {
+	} else if info.Size()+int64(appendLength) <= cfg.size {
 		return path, nil
 	} else {
 		increment, err := getMaxIncrement(path)
@@ -171,49 +178,38 @@ func getMaxIncrement(path string) (int, error) {
 	return 0, nil
 }
 
-func moveFile(sourceFilePath string, destinationFilePath string) (error) {
-	source, err := os.Open(sourceFilePath)
-	if err != nil {
-		return err
-	}
-	defer source.Close()
-
-	destination, err := os.Create(destinationFilePath)
-	if err != nil {
-		return err
-	}
-	defer destination.Close()
-
-	_, err = io.Copy(destination, source)
-	if err != nil {
-		return err
-	}
-
-	err = os.Remove(sourceFilePath)
-	if err != nil {
-		return err
-	}
-
-	return nil
+func moveFile(sourceFilePath string, destinationFilePath string) error {
+	return os.Rename(sourceFilePath, destinationFilePath)
 }
 
-func write(level int, message string) {
-	if log.level <= level {
-		logLine := log.format(level, getFuncName(), message)
-		filePath, err := getFilePath(len(logLine))
+func handle(l log) {
+	wg.Add(1)
+	l.message = cfg.format(l.level, getFuncName(), l.message)
+	cfg.logChan <- l
+
+	once.Do(func() {
+		go func(logChan chan log) {
+			for log := range logChan {
+				write(log)
+				wg.Done()
+			}
+		}(cfg.logChan)
+	})
+}
+
+func write(l log) {
+	if cfg.level <= l.level {
+		filePath, err := getFilePath(len(l.message))
 		if err != nil {
-			fmt.Printf("Can't access to log file %s. Catch error %s\n", log.path, err.Error())
+			fmt.Printf("Can't access to log file %s. Catch error %s\n", cfg.path, err.Error())
 
 			return
 		}
 
-		mutex.Lock()
-
-		file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+		file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 
 		defer file.Sync()
 		defer file.Close()
-		defer mutex.Unlock()
 
 		if err != nil {
 			fmt.Printf("Can't write log to file %s. Catch error: %s\n", filePath, err.Error())
@@ -221,55 +217,63 @@ func write(level int, message string) {
 			return
 		}
 
-		_, err = file.WriteString(logLine + "\n")
+		_, err = file.WriteString(l.message + "\n")
 		if err != nil {
 			fmt.Printf("Can't write log to file %s. Catch error: %s\n", filePath, err.Error())
 
 			return
 		}
 
-		if log.stdout {
-			fmt.Println(logLine)
+		if cfg.stdout {
+			if l.level <= WARN {
+				fmt.Fprintln(os.Stdout, l.message)
+			} else {
+				fmt.Fprintln(os.Stderr, l.message)
+			}
 		}
 	}
 }
 
+func Flush() {
+	wg.Wait()
+}
+
 func Debug(message string) {
-	write(DEBUG, message)
+	handle(log{level: DEBUG, message: message})
 }
 
 func Info(message string) {
-	write(INFO, message)
+	handle(log{level: INFO, message: message})
 }
 
 func Warn(message string) {
-	write(WARN, message)
+	handle(log{level: WARN, message: message})
 }
 
 func Error(message string) {
-	write(ERROR, message)
+	handle(log{level: ERROR, message: message})
 }
 
 func Fatal(message string) {
-	write(FATAL, message)
+	handle(log{level: FATAL, message: message})
 }
 
 func DebugFmt(message string, args ...interface{}) {
-	write(DEBUG, fmt.Sprintf(message, args...))
+	handle(log{level: DEBUG, message: fmt.Sprintf(message, args...)})
 }
 
 func InfoFmt(message string, args ...interface{}) {
-	write(INFO, fmt.Sprintf(message, args...))
+	handle(log{level: INFO, message: fmt.Sprintf(message, args...)})
 }
 
 func WarnFmt(message string, args ...interface{}) {
-	write(WARN, fmt.Sprintf(message, args...))
+	handle(log{level: WARN, message: fmt.Sprintf(message, args...)})
 }
 
 func ErrorFmt(message string, args ...interface{}) {
-	write(ERROR, fmt.Sprintf(message, args...))
+	handle(log{level: ERROR, message: fmt.Sprintf(message, args...)})
 }
 
 func FatalFmt(message string, args ...interface{}) {
-	write(FATAL, fmt.Sprintf(message, args...))
+	handle(log{level: FATAL, message: fmt.Sprintf(message, args...)})
 }

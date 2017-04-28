@@ -65,3 +65,4 @@ log.Fatal("fatal line")
 * log.ErrorFmt("error line %d", 1) - use only in a case of a return error what doesn't effect application run
 * log.Fatal("fatal line") - use only in a case of a return error what do effect application run
 * log.FatalFmt("fatal line %d", 1) - use only in a case of a return error what do effect application run
+* log.Flush() - finish all process
