@@ -225,7 +225,7 @@ func write(l log) {
 		}
 
 		if cfg.stdout {
-			if l.level <= WARN {
+			if l.level < WARN {
 				fmt.Fprintln(os.Stdout, l.message)
 			} else {
 				fmt.Fprintln(os.Stderr, l.message)
