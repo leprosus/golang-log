@@ -32,6 +32,8 @@ type config struct {
 	size    int64
 	logChan chan log
 	stdout  bool
+	once    *sync.Once
+	wg      *sync.WaitGroup
 }
 
 type log struct {
@@ -70,10 +72,9 @@ var (
 		},
 		size:    megaByte,
 		logChan: make(chan log, 100),
-		stdout:  false}
-
-	once = &sync.Once{}
-	wg   = &sync.WaitGroup{}
+		stdout:  false,
+		once:    &sync.Once{},
+		wg:      &sync.WaitGroup{}}
 )
 
 func Path(path string) {
@@ -183,15 +184,15 @@ func moveFile(sourceFilePath string, destinationFilePath string) error {
 }
 
 func handle(l log) {
-	wg.Add(1)
+	cfg.wg.Add(1)
 	l.message = cfg.format(l.level, getFuncName(), l.message)
 	cfg.logChan <- l
 
-	once.Do(func() {
+	cfg.once.Do(func() {
 		go func(logChan chan log) {
 			for log := range logChan {
 				write(log)
-				wg.Done()
+				cfg.wg.Done()
 			}
 		}(cfg.logChan)
 	})
@@ -235,7 +236,7 @@ func write(l log) {
 }
 
 func Flush() {
-	wg.Wait()
+	cfg.wg.Wait()
 }
 
 func Debug(message string) {
