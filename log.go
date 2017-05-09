@@ -26,14 +26,19 @@ const (
 )
 
 type config struct {
-	level   int
-	path    string
-	format  func(level int, line string, message string) string
-	size    int64
-	logChan chan log
-	stdout  bool
-	once    *sync.Once
-	wg      *sync.WaitGroup
+	level    int
+	path     string
+	format   func(level int, line string, message string) string
+	size     int64
+	logChan  chan log
+	stdout   bool
+	once     *sync.Once
+	wg       *sync.WaitGroup
+	notifier notifier
+}
+type notifier struct {
+	callback func(message string)
+	level    int
 }
 
 type log struct {
@@ -74,7 +79,10 @@ var (
 		logChan: make(chan log, 100),
 		stdout:  false,
 		once:    &sync.Once{},
-		wg:      &sync.WaitGroup{}}
+		wg:      &sync.WaitGroup{},
+		notifier: notifier{
+			callback: func(message string) {},
+			level:    DEBUG}}
 )
 
 func Path(path string) {
@@ -88,20 +96,7 @@ func Level(level int) {
 }
 
 func LevelAsString(level string) {
-	switch strings.ToLower(level) {
-	case "debug":
-		Level(DEBUG)
-	case "info":
-		Level(INFO)
-	case "warn":
-		Level(WARN)
-	case "error":
-		Level(ERROR)
-	case "fatal":
-		Level(FATAL)
-	default:
-		Level(DEBUG)
-	}
+	Level(getLevelFromString(level))
 }
 
 func Format(format func(level int, line string, message string) string) {
@@ -114,6 +109,23 @@ func SizeLimit(size int64) {
 
 func Stdout(state bool) {
 	cfg.stdout = state
+}
+
+func getLevelFromString(level string) int {
+	switch strings.ToLower(level) {
+	case "debug":
+		return DEBUG
+	case "info":
+		return INFO
+	case "warn":
+		return WARN
+	case "error":
+		return ERROR
+	case "fatal":
+		return FATAL
+	default:
+		return DEBUG
+	}
 }
 
 func getFuncName() string {
@@ -191,7 +203,12 @@ func handle(l log) {
 	cfg.once.Do(func() {
 		go func(logChan chan log) {
 			for log := range logChan {
+				if cfg.notifier.level <= log.level {
+					cfg.notifier.callback(log.message)
+				}
+
 				write(log)
+
 				cfg.wg.Done()
 			}
 		}(cfg.logChan)
@@ -237,6 +254,12 @@ func write(l log) {
 
 func Flush() {
 	cfg.wg.Wait()
+}
+
+func Notifier(callback func(message string), level string) {
+	cfg.notifier = notifier{
+		callback: callback,
+		level:    getLevelFromString(level)}
 }
 
 func Debug(message string) {
