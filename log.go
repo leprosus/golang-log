@@ -87,6 +87,8 @@ var (
 
 func Path(path string) {
 	cfg.path = path
+
+	os.MkdirAll(cfg.path, os.ModePerm)
 }
 
 func Level(level int) {
