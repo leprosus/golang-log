@@ -139,58 +139,70 @@ func getFuncName() string {
 	return fmt.Sprintf("%s:%d", strings.Replace(scriptName, appPath, "", -1), line)
 }
 
-func getFilePath(appendLength int) (string, error) {
+func getFilePath(appendLength int) (path string, err error) {
 	timestamp := time.Now().Format("2006-01-02")
-	path := cfg.path + string(os.PathSeparator) + timestamp + ".log"
+	path = cfg.path + string(os.PathSeparator) + timestamp + ".log"
+
+	path, err = filepath.Abs(path)
+	if err != nil {
+		return
+	}
 
 	info, err := os.Stat(path)
-	if err != nil && os.IsNotExist(err) {
-		return path, nil
+	if os.IsNotExist(err) {
+		return
 	} else if info.Size()+int64(appendLength) <= cfg.size {
-		return path, nil
+		return
 	} else {
-		increment, err := getMaxIncrement(path)
+		var increment int
+		increment, err = getMaxIncrement(path)
 		if err != nil {
-			return path, err
+			return
 		}
 
 		err = moveFile(path, fmt.Sprintf("%s.%d", path, increment+1))
 		if err != nil {
-			return path, err
+			return
 		}
 	}
 
-	return path, nil
+	return
 }
 
-func getMaxIncrement(path string) (int, error) {
+func getMaxIncrement(path string) (incr int, err error) {
+	path, err = filepath.Abs(path)
+	if err != nil {
+		return
+	}
+
 	matches, err := filepath.Glob(path + ".*")
 	if os.IsNotExist(err) {
-		return 0, nil
+		return
 	} else if err != nil {
-		return 0, err
+		return
 	}
 
 	if len(matches) > 0 {
-		max := 0
-
 		for _, match := range matches {
-			match = strings.Replace(match, path, "", -1)
-			i32, err := strconv.ParseInt(match, 10, 32)
+			match = strings.Replace(match, path+".", "", -1)
+			var i64 int64
+			i64, err = strconv.ParseInt(match, 10, 32)
 
 			if err == nil {
-				i := int(i32)
+				i := int(i64)
 
-				if max < i {
-					max = i
+				if incr < i {
+					incr = i
 				}
+			} else {
+				return
 			}
 		}
 
-		return max, nil
+		return
 	}
 
-	return 0, nil
+	return
 }
 
 func moveFile(sourceFilePath string, destinationFilePath string) error {
