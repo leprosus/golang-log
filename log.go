@@ -150,9 +150,9 @@ func getFilePath(appendLength int) (path string, err error) {
 
 	info, err := os.Stat(path)
 	if os.IsNotExist(err) {
-		return
+		return path, nil
 	} else if info.Size()+int64(appendLength) <= cfg.size {
-		return
+		return path, nil
 	} else {
 		var increment int
 		increment, err = getMaxIncrement(path)
@@ -239,15 +239,14 @@ func write(l log) {
 		}
 
 		file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
-
-		defer file.Sync()
-		defer file.Close()
-
 		if err != nil {
 			fmt.Printf("Can't write log to file %s. Catch error: %s\n", filePath, err.Error())
 
 			return
 		}
+
+		defer file.Sync()
+		defer file.Close()
 
 		_, err = file.WriteString(l.message + "\n")
 		if err != nil {
