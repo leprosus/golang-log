@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"log/syslog"
 )
 
 const (
@@ -26,15 +27,21 @@ const (
 )
 
 type config struct {
-	level    int
-	path     string
-	format   func(level int, line string, message string) string
-	size     int64
-	logChan  chan log
-	stdout   bool
-	once     *sync.Once
-	wg       *sync.WaitGroup
-	notifier notifier
+	level        int
+	path         string
+	saveInFile   bool
+	syslog       *syslog.Writer
+	saveInSyslog bool
+	ttl          int64
+	deleteOld    bool
+	format       func(level int, line string, message string) string
+	extension    string
+	size         int64
+	logChan      chan log
+	stdout       bool
+	once         *sync.Once
+	wg           *sync.WaitGroup
+	notifier     notifier
 }
 type notifier struct {
 	callback func(message string)
@@ -49,7 +56,6 @@ type log struct {
 var (
 	cfg = config{
 		level: DEBUG,
-		path:  "./log",
 		format: func(level int, line string, message string) string {
 			now := time.Now().Format("2006-01-02 15:04:05")
 			levelStr := "DEBUG"
@@ -75,11 +81,12 @@ var (
 
 			return strings.Join(data, "\t")
 		},
-		size:    megaByte,
-		logChan: make(chan log, 100),
-		stdout:  false,
-		once:    &sync.Once{},
-		wg:      &sync.WaitGroup{},
+		size:      -1,
+		logChan:   make(chan log, 100),
+		stdout:    false,
+		extension: "log",
+		once:      &sync.Once{},
+		wg:        &sync.WaitGroup{},
 		notifier: notifier{
 			callback: func(message string) {},
 			level:    DEBUG}}
@@ -87,8 +94,21 @@ var (
 
 func Path(path string) {
 	cfg.path = path
+	cfg.saveInFile = true
 
 	os.MkdirAll(cfg.path, os.ModePerm)
+}
+
+func Syslog(tag string) {
+	var err error
+	cfg.syslog, err = syslog.New(syslog.LOG_DEBUG|syslog.LOG_USER, tag)
+	if err != nil {
+		fmt.Printf("Can't init syslog with tag %s. Catch error %s\n", tag, err.Error())
+
+		return
+	}
+
+	cfg.saveInSyslog = true
 }
 
 func Level(level int) {
@@ -111,6 +131,15 @@ func SizeLimit(size int64) {
 
 func Stdout(state bool) {
 	cfg.stdout = state
+}
+
+func TTL(ttl int64) {
+	cfg.ttl = ttl
+	cfg.deleteOld = true
+}
+
+func Extension(extension string) {
+	cfg.extension = extension
 }
 
 func getLevelFromString(level string) int {
@@ -141,7 +170,7 @@ func getFuncName() string {
 
 func getFilePath(appendLength int) (path string, err error) {
 	timestamp := time.Now().Format("2006-01-02")
-	path = cfg.path + string(os.PathSeparator) + timestamp + ".log"
+	path = cfg.path + string(os.PathSeparator) + timestamp + "." + cfg.extension
 
 	path, err = filepath.Abs(path)
 	if err != nil {
@@ -151,7 +180,8 @@ func getFilePath(appendLength int) (path string, err error) {
 	info, err := os.Stat(path)
 	if os.IsNotExist(err) {
 		return path, nil
-	} else if info.Size()+int64(appendLength) <= cfg.size {
+	} else if cfg.size < 0 ||
+		info.Size()+int64(appendLength) <= cfg.size {
 		return path, nil
 	} else {
 		var increment int
@@ -215,13 +245,26 @@ func handle(l log) {
 	cfg.logChan <- l
 
 	cfg.once.Do(func() {
+		if cfg.deleteOld {
+			go watchOld()
+		}
+
 		go func(logChan chan log) {
 			for log := range logChan {
 				if cfg.notifier.level <= log.level {
 					cfg.notifier.callback(log.message)
 				}
+				if cfg.level <= l.level {
+					printToStdout(log)
 
-				write(log)
+					if cfg.saveInFile {
+						writeToFile(log)
+					}
+
+					if cfg.saveInSyslog {
+						writeToSyslog(log)
+					}
+				}
 
 				cfg.wg.Done()
 			}
@@ -229,8 +272,18 @@ func handle(l log) {
 	})
 }
 
-func write(l log) {
-	if cfg.level <= l.level {
+func printToStdout(l log) {
+	if cfg.stdout {
+		if l.level < WARN {
+			fmt.Fprintln(os.Stdout, l.message)
+		} else {
+			fmt.Fprintln(os.Stderr, l.message)
+		}
+	}
+}
+
+func writeToFile(l log) {
+	if cfg.saveInFile {
 		filePath, err := getFilePath(len(l.message))
 		if err != nil {
 			fmt.Printf("Can't access to log file %s. Catch error %s\n", cfg.path, err.Error())
@@ -251,15 +304,54 @@ func write(l log) {
 		_, err = file.WriteString(l.message + "\n")
 		if err != nil {
 			fmt.Printf("Can't write log to file %s. Catch error: %s\n", filePath, err.Error())
-
-			return
 		}
+	}
+}
 
-		if cfg.stdout {
-			if l.level < WARN {
-				fmt.Fprintln(os.Stdout, l.message)
-			} else {
-				fmt.Fprintln(os.Stderr, l.message)
+func writeToSyslog(l log) {
+	if cfg.saveInSyslog {
+		switch l.level {
+		case FATAL:
+			cfg.syslog.Emerg(l.message)
+		case ERROR:
+			cfg.syslog.Err(l.message)
+		case WARN:
+			cfg.syslog.Warning(l.message)
+		case INFO:
+			cfg.syslog.Info(l.message)
+		case DEBUG:
+			cfg.syslog.Debug(l.message)
+		}
+	}
+}
+
+func watchOld() {
+	for {
+		deleteOld()
+
+		time.Sleep(time.Hour)
+	}
+}
+
+func deleteOld() {
+	paths, err := filepath.Glob(cfg.path + string(filepath.Separator) + "*")
+	if err != nil {
+		fmt.Printf("Can't access to log file %s. Catch error %s\n", cfg.path, err.Error())
+
+		return
+	} else {
+		ttl := float64(cfg.ttl)
+
+		for _, path := range paths {
+			file, err := os.Stat(path)
+			if err != nil {
+				fmt.Printf("Can't access to log file %s. Catch error %s\n", cfg.path, err.Error())
+
+				return
+			} else if !file.IsDir() {
+				if time.Now().Sub(file.ModTime()).Seconds() > ttl {
+					os.Remove(path)
+				}
 			}
 		}
 	}

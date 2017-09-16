@@ -52,9 +52,12 @@ log.Fatal("fatal line")
 * log.Path("./log") - sets directory path to save log files
 * log.Level(log.DEBUG) - sets log level by constant
 * log.LevelAsString("debug") - sets log level by string
+* log.Syslog("tag") - writes to localhost syslog with tag
 * log.Format(func(level int, line string, message string) string) - sets function to prepare format log line
-* log.SizeLimit(2 * log.megaByte) - sets log file size limit
+* log.SizeLimit(2 * log.megaByte) - sets log file size limit (if value is less zero then size limit is off)
 * log.Stdout(true) - sets log output to stdout
+* log.TTL(3600) - sets time-to-live of log files (all old files will be removed)
+* log.Extension("txt") = sets another log files extension (.log is default)
 * log.Debug("debug line") - writes message with debug data
 * log.DebugFmt("debug line %d", 1) - writes message with debug data
 * log.Info("info line") - writes message with information about state or similar
