@@ -240,9 +240,11 @@ func moveFile(sourceFilePath string, destinationFilePath string) error {
 }
 
 func handle(l log) {
-	cfg.wg.Add(1)
-	l.message = cfg.format(l.level, getFuncName(), l.message)
-	cfg.logChan <- l
+	if cfg.level <= l.level {
+		cfg.wg.Add(1)
+		l.message = cfg.format(l.level, getFuncName(), l.message)
+		cfg.logChan <- l
+	}
 
 	cfg.once.Do(func() {
 		if cfg.deleteOld {
@@ -254,17 +256,10 @@ func handle(l log) {
 				if cfg.notifier.level <= log.level {
 					cfg.notifier.callback(log.message)
 				}
-				if cfg.level <= l.level {
-					printToStdout(log)
 
-					if cfg.saveInFile {
-						writeToFile(log)
-					}
-
-					if cfg.saveInSyslog {
-						writeToSyslog(log)
-					}
-				}
+				printToStdout(log)
+				writeToFile(log)
+				writeToSyslog(log)
 
 				cfg.wg.Done()
 			}
