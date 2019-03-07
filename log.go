@@ -2,6 +2,7 @@ package log
 
 import (
 	"fmt"
+	"log/syslog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -9,15 +10,14 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"log/syslog"
 )
 
 const (
-	DEBUG = 1
-	INFO  = 2
-	WARN  = 3
-	ERROR = 4
-	FATAL = 5
+	DEBUG = iota
+	INFO
+	WARN
+	ERROR
+	FATAL
 )
 
 const (
@@ -92,11 +92,13 @@ var (
 			level:    DEBUG}}
 )
 
-func Path(path string) {
+func Path(path string) (err error) {
 	cfg.path = path
 	cfg.saveInFile = true
 
-	os.MkdirAll(cfg.path, os.ModePerm)
+	err = os.MkdirAll(cfg.path, os.ModePerm)
+
+	return
 }
 
 func Syslog(tag string) {
@@ -112,7 +114,7 @@ func Syslog(tag string) {
 }
 
 func Level(level int) {
-	if level > 0 && level < 6 {
+	if level >= 0 && level < 5 {
 		cfg.level = level
 	}
 }
@@ -269,10 +271,18 @@ func handle(l log) {
 
 func printToStdout(l log) {
 	if cfg.stdout {
+		var err error
+
 		if l.level < WARN {
-			fmt.Fprintln(os.Stdout, l.message)
+			_, err = fmt.Fprintln(os.Stdout, l.message)
+			if err != nil {
+				fmt.Printf("Can't write to stdout. Catch error %s\n", err.Error())
+			}
 		} else {
-			fmt.Fprintln(os.Stderr, l.message)
+			_, err = fmt.Fprintln(os.Stderr, l.message)
+			if err != nil {
+				fmt.Printf("Can't write to stderr. Catch error %s\n", err.Error())
+			}
 		}
 	}
 }
@@ -293,8 +303,17 @@ func writeToFile(l log) {
 			return
 		}
 
-		defer file.Sync()
-		defer file.Close()
+		defer func() {
+			err = file.Sync()
+			if err != nil {
+				fmt.Printf("Can't sync log file %s. Catch error: %s\n", filePath, err.Error())
+			}
+
+			err = file.Close()
+			if err != nil {
+				fmt.Printf("Can't sync log file %s. Catch error: %s\n", filePath, err.Error())
+			}
+		}()
 
 		_, err = file.WriteString(l.message + "\n")
 		if err != nil {
@@ -304,19 +323,25 @@ func writeToFile(l log) {
 }
 
 func writeToSyslog(l log) {
+	var err error
+
 	if cfg.saveInSyslog {
 		switch l.level {
 		case FATAL:
-			cfg.syslog.Emerg(l.message)
+			err = cfg.syslog.Emerg(l.message)
 		case ERROR:
-			cfg.syslog.Err(l.message)
+			err = cfg.syslog.Err(l.message)
 		case WARN:
-			cfg.syslog.Warning(l.message)
+			err = cfg.syslog.Warning(l.message)
 		case INFO:
-			cfg.syslog.Info(l.message)
+			err = cfg.syslog.Info(l.message)
 		case DEBUG:
-			cfg.syslog.Debug(l.message)
+			err = cfg.syslog.Debug(l.message)
 		}
+	}
+
+	if err != nil {
+		fmt.Printf("Can't write log to syslog. Catch error: %s\n", err.Error())
 	}
 }
 
@@ -345,7 +370,12 @@ func deleteOld() {
 				return
 			} else if !file.IsDir() {
 				if time.Now().Sub(file.ModTime()).Seconds() > ttl {
-					os.Remove(path)
+					err = os.Remove(path)
+					if err != nil {
+						fmt.Printf("Can't remove old log file %s. Catch error %s\n", path, err.Error())
+
+						return
+					}
 				}
 			}
 		}
