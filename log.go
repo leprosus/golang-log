@@ -41,6 +41,7 @@ type config struct {
 	stdout       bool
 	once         *sync.Once
 	wg           *sync.WaitGroup
+	mx           *sync.RWMutex
 	notifier     notifier
 }
 type notifier struct {
@@ -53,55 +54,60 @@ type log struct {
 	message string
 }
 
-var (
-	cfg = config{
-		level: DEBUG,
-		format: func(level int, line string, message string) string {
-			now := time.Now().Format("2006-01-02 15:04:05")
-			levelStr := "DEBUG"
+var cfg = config{
+	level: DEBUG,
+	format: func(level int, line string, message string) string {
+		now := time.Now().Format("2006-01-02 15:04:05")
+		levelStr := "DEBUG"
 
-			switch level {
-			case DEBUG:
-				levelStr = "DEBUG"
-			case INFO:
-				levelStr = "INFO"
-			case WARN:
-				levelStr = "WARN"
-			case ERROR:
-				levelStr = "ERROR"
-			case FATAL:
-				levelStr = "FATAL"
-			}
+		switch level {
+		case DEBUG:
+			levelStr = "DEBUG"
+		case INFO:
+			levelStr = "INFO"
+		case WARN:
+			levelStr = "WARN"
+		case ERROR:
+			levelStr = "ERROR"
+		case FATAL:
+			levelStr = "FATAL"
+		}
 
-			data := []string{
-				now,
-				levelStr,
-				line,
-				message}
+		data := []string{
+			now,
+			levelStr,
+			line,
+			message}
 
-			return strings.Join(data, "\t")
-		},
-		size:      -1,
-		logChan:   make(chan log, 100),
-		stdout:    false,
-		extension: "log",
-		once:      &sync.Once{},
-		wg:        &sync.WaitGroup{},
-		notifier: notifier{
-			callback: func(message string) {},
-			level:    DEBUG}}
-)
+		return strings.Join(data, "\t")
+	},
+	size:      -1,
+	logChan:   make(chan log, 100),
+	stdout:    false,
+	extension: "log",
+	once:      &sync.Once{},
+	wg:        &sync.WaitGroup{},
+	mx:        &sync.RWMutex{},
+	notifier: notifier{
+		callback: func(message string) {},
+		level:    DEBUG}}
 
 func Path(path string) (err error) {
+	cfg.mx.Lock()
+	defer cfg.mx.Unlock()
+
 	cfg.path = path
 	cfg.saveInFile = true
 
-	err = os.MkdirAll(cfg.path, os.ModePerm)
+	err = os.MkdirAll(cfg.path, 0755)
 
 	return
 }
 
 func Syslog(tag string) {
+	cfg.mx.Lock()
+	defer cfg.mx.Unlock()
+
 	var err error
 	cfg.syslog, err = syslog.New(syslog.LOG_DEBUG|syslog.LOG_USER, tag)
 	if err != nil {
@@ -114,6 +120,9 @@ func Syslog(tag string) {
 }
 
 func Level(level int) {
+	cfg.mx.Lock()
+	defer cfg.mx.Unlock()
+
 	if level >= 0 && level < 5 {
 		cfg.level = level
 	}
@@ -124,27 +133,45 @@ func LevelAsString(level string) {
 }
 
 func Format(format func(level int, line string, message string) string) {
+	cfg.mx.Lock()
+	defer cfg.mx.Unlock()
+
 	cfg.format = format
 }
 
 func SizeLimit(size int64) {
+	cfg.mx.Lock()
+	defer cfg.mx.Unlock()
+
 	cfg.size = size
 }
 
 func Stdout(state bool) {
+	cfg.mx.Lock()
+	defer cfg.mx.Unlock()
+
 	cfg.stdout = state
 }
 
 func TTL(ttl int64) {
+	cfg.mx.Lock()
+	defer cfg.mx.Unlock()
+
 	cfg.ttl = ttl
 	cfg.deleteOld = true
 }
 
 func Extension(extension string) {
+	cfg.mx.Lock()
+	defer cfg.mx.Unlock()
+
 	cfg.extension = extension
 }
 
 func getLevelFromString(level string) int {
+	cfg.mx.Lock()
+	defer cfg.mx.Unlock()
+
 	switch strings.ToLower(level) {
 	case "debug":
 		return DEBUG
@@ -171,6 +198,9 @@ func getFuncName() string {
 }
 
 func getFilePath(appendLength int) (path string, err error) {
+	cfg.mx.RLock()
+	defer cfg.mx.RUnlock()
+
 	timestamp := time.Now().Format("2006-01-02")
 	path = cfg.path + string(os.PathSeparator) + timestamp + "." + cfg.extension
 
@@ -242,6 +272,9 @@ func moveFile(sourceFilePath string, destinationFilePath string) error {
 }
 
 func handle(l log) {
+	cfg.mx.RLock()
+	defer cfg.mx.RUnlock()
+
 	if cfg.level <= l.level {
 		cfg.wg.Add(1)
 		l.message = cfg.format(l.level, getFuncName(), l.message)
@@ -354,6 +387,9 @@ func watchOld() {
 }
 
 func deleteOld() {
+	cfg.mx.RLock()
+	defer cfg.mx.RUnlock()
+
 	paths, err := filepath.Glob(cfg.path + string(filepath.Separator) + "*")
 	if err != nil {
 		fmt.Printf("Can't access to log file %s. Catch error %s\n", cfg.path, err.Error())
@@ -383,10 +419,16 @@ func deleteOld() {
 }
 
 func Flush() {
+	cfg.mx.RLock()
+	defer cfg.mx.RUnlock()
+
 	cfg.wg.Wait()
 }
 
 func Notifier(callback func(message string), level string) {
+	cfg.mx.Lock()
+	defer cfg.mx.Unlock()
+
 	cfg.notifier = notifier{
 		callback: callback,
 		level:    getLevelFromString(level)}
