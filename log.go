@@ -169,9 +169,6 @@ func Extension(extension string) {
 }
 
 func getLevelFromString(level string) int {
-	cfg.mx.Lock()
-	defer cfg.mx.Unlock()
-
 	switch strings.ToLower(level) {
 	case "debug":
 		return DEBUG
@@ -387,9 +384,6 @@ func watchOld() {
 }
 
 func deleteOld() {
-	cfg.mx.RLock()
-	defer cfg.mx.RUnlock()
-
 	paths, err := filepath.Glob(cfg.path + string(filepath.Separator) + "*")
 	if err != nil {
 		fmt.Printf("Can't access to log file %s. Catch error %s\n", cfg.path, err.Error())
@@ -419,9 +413,6 @@ func deleteOld() {
 }
 
 func Flush() {
-	cfg.mx.RLock()
-	defer cfg.mx.RUnlock()
-
 	cfg.wg.Wait()
 }
 
