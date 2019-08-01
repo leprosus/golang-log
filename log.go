@@ -34,7 +34,7 @@ type config struct {
 	saveInSyslog bool
 	ttl          int64
 	deleteOld    bool
-	format       func(level int, line string, message string) string
+	format       func(level int, line, message string) string
 	extension    string
 	size         int64
 	logChan      chan log
@@ -45,7 +45,7 @@ type config struct {
 	notifier     notifier
 }
 type notifier struct {
-	callback func(message string)
+	callback func(level int, message string)
 	level    int
 }
 
@@ -89,7 +89,7 @@ var cfg = config{
 	wg:        &sync.WaitGroup{},
 	mx:        &sync.RWMutex{},
 	notifier: notifier{
-		callback: func(message string) {},
+		callback: func(level int, message string) {},
 		level:    DEBUG}}
 
 func Path(path string) (err error) {
@@ -286,7 +286,7 @@ func handle(l log) {
 		go func(logChan chan log) {
 			for log := range logChan {
 				if cfg.notifier.level <= log.level {
-					cfg.notifier.callback(log.message)
+					cfg.notifier.callback(log.level, log.message)
 				}
 
 				printToStdout(log)
@@ -416,7 +416,7 @@ func Flush() {
 	cfg.wg.Wait()
 }
 
-func Notifier(callback func(message string), level string) {
+func Notifier(callback func(level int, message string), level string) {
 	cfg.mx.Lock()
 	defer cfg.mx.Unlock()
 
