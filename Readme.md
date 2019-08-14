@@ -1,4 +1,4 @@
-# Golang file logger
+# Golang thread-safe, lock-free file & stdout & syslog logger
 
 ## Settings
 
@@ -69,4 +69,4 @@ log.Fatal("fatal line")
 * log.Fatal("fatal line") - use only in a case of a return error what do effect application run
 * log.FatalFmt("fatal line %d", 1) - use only in a case of a return error what do effect application run
 * log.Flush() - finish all process
-* log.Notifier(func(message string){ /* do something */ }, "warn") - sets callback on all message with level more or equal "warn" ("warn", "error", "fatal")
+* log.Hook(func(message string){ /* do something */ }, "warn") - sets callback on all message with level more or equal "warn" ("warn", "error", "fatal")

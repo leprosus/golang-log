@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -20,31 +21,23 @@ const (
 	FATAL
 )
 
-const (
-	kiloByte = 1024
-	megaByte = kiloByte * 1024
-	gigaByte = megaByte * 1024
+var (
+	once          = &sync.Once{}
+	wg            = &sync.WaitGroup{}
+	logChan       = make(chan log, 1024)
+	cfgLevel      = &atomic.Value{}
+	cfgPath       = &atomic.Value{}
+	cfgSyslog     = &atomic.Value{}
+	cfgSyslogFlag = &atomic.Value{}
+	cfgTTL        = &atomic.Value{}
+	cfgFormat     = &atomic.Value{}
+	cfgExtension  = &atomic.Value{}
+	cfgSize       = &atomic.Value{}
+	cfgStdOut     = &atomic.Value{}
+	cfgHook       = &atomic.Value{}
 )
 
-type config struct {
-	level        int
-	path         string
-	saveInFile   bool
-	syslog       *syslog.Writer
-	saveInSyslog bool
-	ttl          int64
-	deleteOld    bool
-	format       func(level int, line, message string) string
-	extension    string
-	size         int64
-	logChan      chan log
-	stdout       bool
-	once         *sync.Once
-	wg           *sync.WaitGroup
-	mx           *sync.RWMutex
-	notifier     notifier
-}
-type notifier struct {
+type hook struct {
 	callback func(level int, message string)
 	level    int
 }
@@ -54,15 +47,14 @@ type log struct {
 	message string
 }
 
-var cfg = config{
-	level: DEBUG,
-	format: func(level int, line string, message string) string {
-		now := time.Now().Format("2006-01-02 15:04:05")
+func init() {
+	cfgLevel.Store(DEBUG)
+	cfgSyslog.Store(&syslog.Writer{})
+	cfgSyslogFlag.Store(false)
+	cfgFormat.Store(func(level int, line string, message string) string {
 		levelStr := "DEBUG"
 
 		switch level {
-		case DEBUG:
-			levelStr = "DEBUG"
 		case INFO:
 			levelStr = "INFO"
 		case WARN:
@@ -74,57 +66,44 @@ var cfg = config{
 		}
 
 		data := []string{
-			now,
+			time.Now().Format("2006-01-02 15:04:05"),
 			levelStr,
 			line,
 			message}
 
 		return strings.Join(data, "\t")
-	},
-	size:      -1,
-	logChan:   make(chan log, 100),
-	stdout:    false,
-	extension: "log",
-	once:      &sync.Once{},
-	wg:        &sync.WaitGroup{},
-	mx:        &sync.RWMutex{},
-	notifier: notifier{
+	})
+	cfgExtension.Store("log")
+	cfgSize.Store(int64(-1))
+	cfgStdOut.Store(false)
+	cfgHook.Store(hook{
 		callback: func(level int, message string) {},
-		level:    DEBUG}}
+		level:    DEBUG})
+}
 
 func Path(path string) (err error) {
-	cfg.mx.Lock()
-	defer cfg.mx.Unlock()
+	cfgPath.Store(path)
 
-	cfg.path = path
-	cfg.saveInFile = true
-
-	err = os.MkdirAll(cfg.path, 0755)
+	err = os.MkdirAll(path, 0755)
 
 	return
 }
 
 func Syslog(tag string) {
-	cfg.mx.Lock()
-	defer cfg.mx.Unlock()
-
-	var err error
-	cfg.syslog, err = syslog.New(syslog.LOG_DEBUG|syslog.LOG_USER, tag)
+	sl, err := syslog.New(syslog.LOG_DEBUG|syslog.LOG_USER, tag)
 	if err != nil {
 		fmt.Printf("Can't init syslog with tag %s. Catch error %s\n", tag, err.Error())
 
 		return
 	}
 
-	cfg.saveInSyslog = true
+	cfgSyslog.Store(sl)
+	cfgSyslogFlag.Store(true)
 }
 
 func Level(level int) {
-	cfg.mx.Lock()
-	defer cfg.mx.Unlock()
-
 	if level >= 0 && level < 5 {
-		cfg.level = level
+		cfgLevel.Store(level)
 	}
 }
 
@@ -133,39 +112,23 @@ func LevelAsString(level string) {
 }
 
 func Format(format func(level int, line string, message string) string) {
-	cfg.mx.Lock()
-	defer cfg.mx.Unlock()
-
-	cfg.format = format
+	cfgFormat.Store(format)
 }
 
 func SizeLimit(size int64) {
-	cfg.mx.Lock()
-	defer cfg.mx.Unlock()
-
-	cfg.size = size
+	cfgSize.Store(size)
 }
 
 func Stdout(state bool) {
-	cfg.mx.Lock()
-	defer cfg.mx.Unlock()
-
-	cfg.stdout = state
+	cfgStdOut.Store(state)
 }
 
 func TTL(ttl int64) {
-	cfg.mx.Lock()
-	defer cfg.mx.Unlock()
-
-	cfg.ttl = ttl
-	cfg.deleteOld = true
+	cfgTTL.Store(ttl)
 }
 
 func Extension(extension string) {
-	cfg.mx.Lock()
-	defer cfg.mx.Unlock()
-
-	cfg.extension = extension
+	cfgExtension.Store(extension)
 }
 
 func getLevelFromString(level string) int {
@@ -195,11 +158,8 @@ func getFuncName() string {
 }
 
 func getFilePath(appendLength int) (path string, err error) {
-	cfg.mx.RLock()
-	defer cfg.mx.RUnlock()
-
 	timestamp := time.Now().Format("2006-01-02")
-	path = cfg.path + string(os.PathSeparator) + timestamp + "." + cfg.extension
+	path = filepath.Join(cfgPath.Load().(string), timestamp+"."+cfgExtension.Load().(string))
 
 	path, err = filepath.Abs(path)
 	if err != nil {
@@ -209,8 +169,8 @@ func getFilePath(appendLength int) (path string, err error) {
 	info, err := os.Stat(path)
 	if os.IsNotExist(err) {
 		return path, nil
-	} else if cfg.size < 0 ||
-		info.Size()+int64(appendLength) <= cfg.size {
+	} else if cfgSize.Load().(int64) < 0 ||
+		info.Size()+int64(appendLength) <= cfgSize.Load().(int64) {
 		return path, nil
 	} else {
 		var increment int
@@ -269,38 +229,37 @@ func moveFile(sourceFilePath string, destinationFilePath string) error {
 }
 
 func handle(l log) {
-	cfg.mx.RLock()
-	defer cfg.mx.RUnlock()
-
-	if cfg.level <= l.level {
-		cfg.wg.Add(1)
-		l.message = cfg.format(l.level, getFuncName(), l.message)
-		cfg.logChan <- l
+	if cfgLevel.Load().(int) <= l.level {
+		wg.Add(1)
+		l.message = cfgFormat.Load().(func(level int, line, message string) string)(l.level, getFuncName(), l.message)
+		logChan <- l
 	}
 
-	cfg.once.Do(func() {
-		if cfg.deleteOld {
+	once.Do(func() {
+		if cfgTTL.Load().(int64) > 0 {
 			go watchOld()
 		}
 
 		go func(logChan chan log) {
+			var h hook
 			for log := range logChan {
-				if cfg.notifier.level <= log.level {
-					cfg.notifier.callback(log.level, log.message)
+				h = cfgHook.Load().(hook)
+				if h.level <= log.level {
+					h.callback(log.level, log.message)
 				}
 
 				printToStdout(log)
 				writeToFile(log)
 				writeToSyslog(log)
 
-				cfg.wg.Done()
+				wg.Done()
 			}
-		}(cfg.logChan)
+		}(logChan)
 	})
 }
 
 func printToStdout(l log) {
-	if cfg.stdout {
+	if cfgStdOut.Load().(bool) {
 		var err error
 
 		if l.level < WARN {
@@ -318,10 +277,10 @@ func printToStdout(l log) {
 }
 
 func writeToFile(l log) {
-	if cfg.saveInFile {
+	if len(cfgPath.Load().(string)) > 0 {
 		filePath, err := getFilePath(len(l.message))
 		if err != nil {
-			fmt.Printf("Can't access to log file %s. Catch error %s\n", cfg.path, err.Error())
+			fmt.Printf("Can't access to log file %s. Catch error %s\n", cfgPath.Load().(string), err.Error())
 
 			return
 		}
@@ -355,18 +314,20 @@ func writeToFile(l log) {
 func writeToSyslog(l log) {
 	var err error
 
-	if cfg.saveInSyslog {
+	if cfgSyslogFlag.Load().(bool) {
+		sl := cfgSyslog.Load().(*syslog.Writer)
+
 		switch l.level {
 		case FATAL:
-			err = cfg.syslog.Emerg(l.message)
+			err = sl.Emerg(l.message)
 		case ERROR:
-			err = cfg.syslog.Err(l.message)
+			err = sl.Err(l.message)
 		case WARN:
-			err = cfg.syslog.Warning(l.message)
+			err = sl.Warning(l.message)
 		case INFO:
-			err = cfg.syslog.Info(l.message)
+			err = sl.Info(l.message)
 		case DEBUG:
-			err = cfg.syslog.Debug(l.message)
+			err = sl.Debug(l.message)
 		}
 	}
 
@@ -384,18 +345,18 @@ func watchOld() {
 }
 
 func deleteOld() {
-	paths, err := filepath.Glob(cfg.path + string(filepath.Separator) + "*")
+	paths, err := filepath.Glob(cfgPath.Load().(string) + string(filepath.Separator) + "*")
 	if err != nil {
-		fmt.Printf("Can't access to log file %s. Catch error %s\n", cfg.path, err.Error())
+		fmt.Printf("Can't access to log file %s. Catch error %s\n", cfgPath.Load().(string), err.Error())
 
 		return
 	} else {
-		ttl := float64(cfg.ttl)
+		ttl := float64(cfgTTL.Load().(int64))
 
 		for _, path := range paths {
 			file, err := os.Stat(path)
 			if err != nil {
-				fmt.Printf("Can't access to log file %s. Catch error %s\n", cfg.path, err.Error())
+				fmt.Printf("Can't access to log file %s. Catch error %s\n", cfgPath.Load().(string), err.Error())
 
 				return
 			} else if !file.IsDir() {
@@ -413,16 +374,13 @@ func deleteOld() {
 }
 
 func Flush() {
-	cfg.wg.Wait()
+	wg.Wait()
 }
 
-func Notifier(callback func(level int, message string), level string) {
-	cfg.mx.Lock()
-	defer cfg.mx.Unlock()
-
-	cfg.notifier = notifier{
+func Hook(callback func(level int, message string), level string) {
+	cfgHook.Store(hook{
 		callback: callback,
-		level:    getLevelFromString(level)}
+		level:    getLevelFromString(level)})
 }
 
 func Debug(message string) {
