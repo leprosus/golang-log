@@ -51,6 +51,7 @@ func init() {
 	cfgLevel.Store(DEBUG)
 	cfgSyslog.Store(&syslog.Writer{})
 	cfgSyslogFlag.Store(false)
+	cfgTTL.Store(int64(0))
 	cfgFormat.Store(func(level int, line string, message string) string {
 		levelStr := "DEBUG"
 
