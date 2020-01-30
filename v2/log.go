@@ -243,7 +243,7 @@ func moveFile(sourceFilePath string, destinationFilePath string) error {
 }
 
 func handle(l log) {
-	if cfgLevel.Load().(SeverityLevel) <= l.level {
+	if cfgLevel.Load().(SeverityLevel) >= l.level {
 		wg.Add(1)
 		l.message = cfgFormat.Load().(func(level SeverityLevel, line, message string) string)(l.level, getFuncName(), l.message)
 		logChan <- l
