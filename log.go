@@ -278,7 +278,8 @@ func printToStdout(l log) {
 }
 
 func writeToFile(l log) {
-	if len(cfgPath.Load().(string)) > 0 {
+	path := cfgPath.Load()
+	if path != nil && len(path.(string)) > 0 {
 		filePath, err := getFilePath(len(l.message))
 		if err != nil {
 			fmt.Printf("Can't access to log file %s. Catch error %s\n", cfgPath.Load().(string), err.Error())
