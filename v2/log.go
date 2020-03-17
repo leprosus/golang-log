@@ -2,7 +2,6 @@ package log
 
 import (
 	"fmt"
-	"log/syslog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -27,19 +26,17 @@ const (
 )
 
 var (
-	once          = &sync.Once{}
-	wg            = &sync.WaitGroup{}
-	logChan       = make(chan log, 1024)
-	cfgLevel      = &atomic.Value{}
-	cfgPath       = &atomic.Value{}
-	cfgSyslog     = &atomic.Value{}
-	cfgSyslogFlag = &atomic.Value{}
-	cfgTTL        = &atomic.Value{}
-	cfgFormat     = &atomic.Value{}
-	cfgExtension  = &atomic.Value{}
-	cfgSize       = &atomic.Value{}
-	cfgStdOut     = &atomic.Value{}
-	cfgHook       = &atomic.Value{}
+	once         = &sync.Once{}
+	wg           = &sync.WaitGroup{}
+	logChan      = make(chan log, 1024)
+	cfgLevel     = &atomic.Value{}
+	cfgPath      = &atomic.Value{}
+	cfgTTL       = &atomic.Value{}
+	cfgFormat    = &atomic.Value{}
+	cfgExtension = &atomic.Value{}
+	cfgSize      = &atomic.Value{}
+	cfgStdOut    = &atomic.Value{}
+	cfgHook      = &atomic.Value{}
 )
 
 type hook struct {
@@ -54,8 +51,6 @@ type log struct {
 
 func init() {
 	cfgLevel.Store(DebugLevel)
-	cfgSyslog.Store(&syslog.Writer{})
-	cfgSyslogFlag.Store(false)
 	cfgTTL.Store(int64(0))
 	cfgFormat.Store(func(level SeverityLevel, line string, message string) string {
 		levelStr := "DEBUG"
@@ -99,18 +94,6 @@ func Path(path string) (err error) {
 	err = os.MkdirAll(path, 0755)
 
 	return
-}
-
-func Syslog(tag string) {
-	sl, err := syslog.New(syslog.LOG_DEBUG|syslog.LOG_USER, tag)
-	if err != nil {
-		fmt.Printf("Can't init syslog with tag %s. Catch error %s\n", tag, err.Error())
-
-		return
-	}
-
-	cfgSyslog.Store(sl)
-	cfgSyslogFlag.Store(true)
 }
 
 func Level(level SeverityLevel) {
@@ -264,7 +247,6 @@ func handle(l log) {
 
 				printToStdout(log)
 				writeToFile(log)
-				writeToSyslog(log)
 
 				wg.Done()
 			}
@@ -323,37 +305,6 @@ func writeToFile(l log) {
 		if err != nil {
 			fmt.Printf("Can't write log to file %s. Catch error: %s\n", filePath, err.Error())
 		}
-	}
-}
-
-func writeToSyslog(l log) {
-	var err error
-
-	if cfgSyslogFlag.Load().(bool) {
-		sl := cfgSyslog.Load().(*syslog.Writer)
-
-		switch l.level {
-		case EmergencyLevel:
-			err = sl.Emerg(l.message)
-		case AlertLevel:
-			err = sl.Alert(l.message)
-		case CriticalLevel:
-			err = sl.Crit(l.message)
-		case ErrorLevel:
-			err = sl.Err(l.message)
-		case WarnLevel:
-			err = sl.Warning(l.message)
-		case NoticeLevel:
-			err = sl.Notice(l.message)
-		case InfoLevel:
-			err = sl.Info(l.message)
-		case DebugLevel:
-			err = sl.Debug(l.message)
-		}
-	}
-
-	if err != nil {
-		fmt.Printf("Can't write log to syslog. Catch error: %s\n", err.Error())
 	}
 }
 

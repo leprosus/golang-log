@@ -1,4 +1,4 @@
-# Golang thread-safe, lock-free file & stdout & syslog logger
+# Golang thread-safe, lock-free file & stdout
 
 ## Import
 ```go
@@ -53,7 +53,6 @@ log.Error("error line")
 * log.Path("./log") - sets directory path to save log files
 * log.Level(log.Debug) - sets log level by constant
 * log.LevelAsString("debug") - sets log level by string
-* log.Syslog("tag") - writes to localhost syslog with tag
 * log.Format(func(level SeverityLevel, line string, message string) string) - sets function to prepare format log line
 * log.SizeLimit(2 * log.megaByte) - sets log file size limit (if value is less zero then size limit is off)
 * log.Stdout(true) - sets log output to stdout
