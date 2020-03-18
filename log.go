@@ -2,7 +2,6 @@ package log
 
 import (
 	"fmt"
-	"log/syslog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -13,57 +12,64 @@ import (
 	"time"
 )
 
+type SeverityLevel uint
+
 const (
-	DEBUG = iota
-	INFO
-	WARN
-	ERROR
-	FATAL
+	EmergencyLevel SeverityLevel = iota // system is unusable
+	AlertLevel                          // action must be taken immediately
+	CriticalLevel                       // critical conditions
+	ErrorLevel                          // error conditions
+	WarnLevel                           // warning conditions
+	NoticeLevel                         // normal but significant condition
+	InfoLevel                           // informational messages
+	DebugLevel                          // debug-level messages
 )
 
 var (
-	once          = &sync.Once{}
-	wg            = &sync.WaitGroup{}
-	logChan       = make(chan log, 1024)
-	cfgLevel      = &atomic.Value{}
-	cfgPath       = &atomic.Value{}
-	cfgSyslog     = &atomic.Value{}
-	cfgSyslogFlag = &atomic.Value{}
-	cfgTTL        = &atomic.Value{}
-	cfgFormat     = &atomic.Value{}
-	cfgExtension  = &atomic.Value{}
-	cfgSize       = &atomic.Value{}
-	cfgStdOut     = &atomic.Value{}
-	cfgHook       = &atomic.Value{}
+	once         = &sync.Once{}
+	wg           = &sync.WaitGroup{}
+	logChan      = make(chan log, 1024)
+	cfgLevel     = &atomic.Value{}
+	cfgPath      = &atomic.Value{}
+	cfgTTL       = &atomic.Value{}
+	cfgFormat    = &atomic.Value{}
+	cfgExtension = &atomic.Value{}
+	cfgSize      = &atomic.Value{}
+	cfgStdOut    = &atomic.Value{}
+	cfgHook      = &atomic.Value{}
 )
 
 type hook struct {
-	callback func(level int, message string)
-	level    int
+	callback func(level SeverityLevel, message string)
+	level    SeverityLevel
 }
 
 type log struct {
-	level   int
+	level   SeverityLevel
 	message string
 }
 
 func init() {
-	cfgLevel.Store(DEBUG)
-	cfgSyslog.Store(&syslog.Writer{})
-	cfgSyslogFlag.Store(false)
+	cfgLevel.Store(DebugLevel)
 	cfgTTL.Store(int64(0))
-	cfgFormat.Store(func(level int, line string, message string) string {
+	cfgFormat.Store(func(level SeverityLevel, line string, message string) string {
 		levelStr := "DEBUG"
 
 		switch level {
-		case INFO:
+		case InfoLevel:
 			levelStr = "INFO"
-		case WARN:
+		case NoticeLevel:
+			levelStr = "NOTICE"
+		case WarnLevel:
 			levelStr = "WARN"
-		case ERROR:
+		case ErrorLevel:
 			levelStr = "ERROR"
-		case FATAL:
-			levelStr = "FATAL"
+		case CriticalLevel:
+			levelStr = "CRITICAL"
+		case AlertLevel:
+			levelStr = "ALERT"
+		case EmergencyLevel:
+			levelStr = "EMERGENCY"
 		}
 
 		data := []string{
@@ -78,8 +84,8 @@ func init() {
 	cfgSize.Store(int64(-1))
 	cfgStdOut.Store(false)
 	cfgHook.Store(hook{
-		callback: func(level int, message string) {},
-		level:    DEBUG})
+		callback: func(level SeverityLevel, message string) {},
+		level:    DebugLevel})
 }
 
 func Path(path string) (err error) {
@@ -90,22 +96,8 @@ func Path(path string) (err error) {
 	return
 }
 
-func Syslog(tag string) {
-	sl, err := syslog.New(syslog.LOG_DEBUG|syslog.LOG_USER, tag)
-	if err != nil {
-		fmt.Printf("Can't init syslog with tag %s. Catch error %s\n", tag, err.Error())
-
-		return
-	}
-
-	cfgSyslog.Store(sl)
-	cfgSyslogFlag.Store(true)
-}
-
-func Level(level int) {
-	if level >= 0 && level < 5 {
-		cfgLevel.Store(level)
-	}
+func Level(level SeverityLevel) {
+	cfgLevel.Store(level)
 }
 
 func LevelAsString(level string) {
@@ -132,20 +124,24 @@ func Extension(extension string) {
 	cfgExtension.Store(extension)
 }
 
-func getLevelFromString(level string) int {
+func getLevelFromString(level string) SeverityLevel {
 	switch strings.ToLower(level) {
-	case "debug":
-		return DEBUG
 	case "info":
-		return INFO
+		return InfoLevel
+	case "notice":
+		return NoticeLevel
 	case "warn":
-		return WARN
+		return WarnLevel
 	case "error":
-		return ERROR
-	case "fatal":
-		return FATAL
+		return ErrorLevel
+	case "critical":
+		return CriticalLevel
+	case "alert":
+		return AlertLevel
+	case "emergency":
+		return EmergencyLevel
 	default:
-		return DEBUG
+		return DebugLevel
 	}
 }
 
@@ -230,9 +226,9 @@ func moveFile(sourceFilePath string, destinationFilePath string) error {
 }
 
 func handle(l log) {
-	if cfgLevel.Load().(int) <= l.level {
+	if cfgLevel.Load().(SeverityLevel) >= l.level {
 		wg.Add(1)
-		l.message = cfgFormat.Load().(func(level int, line, message string) string)(l.level, getFuncName(), l.message)
+		l.message = cfgFormat.Load().(func(level SeverityLevel, line, message string) string)(l.level, getFuncName(), l.message)
 		logChan <- l
 	}
 
@@ -245,13 +241,12 @@ func handle(l log) {
 			var h hook
 			for log := range logChan {
 				h = cfgHook.Load().(hook)
-				if h.level <= log.level {
+				if h.level >= log.level {
 					h.callback(log.level, log.message)
 				}
 
 				printToStdout(log)
 				writeToFile(log)
-				writeToSyslog(log)
 
 				wg.Done()
 			}
@@ -263,7 +258,7 @@ func printToStdout(l log) {
 	if cfgStdOut.Load().(bool) {
 		var err error
 
-		if l.level < WARN {
+		if l.level < WarnLevel {
 			_, err = fmt.Fprintln(os.Stdout, l.message)
 			if err != nil {
 				fmt.Printf("Can't write to stdout. Catch error %s\n", err.Error())
@@ -313,31 +308,6 @@ func writeToFile(l log) {
 	}
 }
 
-func writeToSyslog(l log) {
-	var err error
-
-	if cfgSyslogFlag.Load().(bool) {
-		sl := cfgSyslog.Load().(*syslog.Writer)
-
-		switch l.level {
-		case FATAL:
-			err = sl.Emerg(l.message)
-		case ERROR:
-			err = sl.Err(l.message)
-		case WARN:
-			err = sl.Warning(l.message)
-		case INFO:
-			err = sl.Info(l.message)
-		case DEBUG:
-			err = sl.Debug(l.message)
-		}
-	}
-
-	if err != nil {
-		fmt.Printf("Can't write log to syslog. Catch error: %s\n", err.Error())
-	}
-}
-
 func watchOld() {
 	for {
 		deleteOld()
@@ -379,48 +349,72 @@ func Flush() {
 	wg.Wait()
 }
 
-func Hook(callback func(level int, message string), level string) {
+func Hook(callback func(level SeverityLevel, message string), level string) {
 	cfgHook.Store(hook{
 		callback: callback,
 		level:    getLevelFromString(level)})
 }
 
-func Debug(message string) {
-	handle(log{level: DEBUG, message: message})
+func Emergency(message string, args ...interface{}) {
+	handle(log{level: EmergencyLevel, message: message})
 }
 
-func Info(message string) {
-	handle(log{level: INFO, message: message})
+func Alert(message string) {
+	handle(log{level: AlertLevel, message: message})
 }
 
-func Warn(message string) {
-	handle(log{level: WARN, message: message})
+func Critical(message string) {
+	handle(log{level: CriticalLevel, message: message})
 }
 
 func Error(message string) {
-	handle(log{level: ERROR, message: message})
+	handle(log{level: ErrorLevel, message: message})
 }
 
-func Fatal(message string) {
-	handle(log{level: FATAL, message: message})
+func Warn(message string) {
+	handle(log{level: WarnLevel, message: message})
 }
 
-func DebugFmt(message string, args ...interface{}) {
-	handle(log{level: DEBUG, message: fmt.Sprintf(message, args...)})
+func Notice(message string) {
+	handle(log{level: NoticeLevel, message: message})
 }
 
-func InfoFmt(message string, args ...interface{}) {
-	handle(log{level: INFO, message: fmt.Sprintf(message, args...)})
+func Info(message string) {
+	handle(log{level: InfoLevel, message: message})
 }
 
-func WarnFmt(message string, args ...interface{}) {
-	handle(log{level: WARN, message: fmt.Sprintf(message, args...)})
+func Debug(message string) {
+	handle(log{level: DebugLevel, message: message})
+}
+
+func EmergencyFmt(message string, args ...interface{}) {
+	handle(log{level: EmergencyLevel, message: fmt.Sprintf(message, args...)})
+}
+
+func AlertFmt(message string, args ...interface{}) {
+	handle(log{level: AlertLevel, message: fmt.Sprintf(message, args...)})
+}
+
+func CriticalFmt(message string, args ...interface{}) {
+	handle(log{level: CriticalLevel, message: fmt.Sprintf(message, args...)})
 }
 
 func ErrorFmt(message string, args ...interface{}) {
-	handle(log{level: ERROR, message: fmt.Sprintf(message, args...)})
+	handle(log{level: ErrorLevel, message: fmt.Sprintf(message, args...)})
 }
 
-func FatalFmt(message string, args ...interface{}) {
-	handle(log{level: FATAL, message: fmt.Sprintf(message, args...)})
+func WarnFmt(message string, args ...interface{}) {
+	handle(log{level: WarnLevel, message: fmt.Sprintf(message, args...)})
+}
+
+func NoticeFmt(message string, args ...interface{}) {
+	handle(log{level: NoticeLevel, message: fmt.Sprintf(message, args...)})
+}
+
+func InfoFmt(message string, args ...interface{}) {
+	handle(log{level: InfoLevel, message: fmt.Sprintf(message, args...)})
+}
+
+func DebugFmt(message string, args ...interface{}) {
+	handle(log{level: DebugLevel, message: fmt.Sprintf(message, args...)})
 }

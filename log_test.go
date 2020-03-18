@@ -1,9 +1,9 @@
 package log
 
 import (
-	"testing"
 	"io/ioutil"
 	"os"
+	"testing"
 )
 
 func TestGetMaxIncrement(t *testing.T) {

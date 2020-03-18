@@ -2,7 +2,7 @@
 
 ## Import
 ```go
-import "github.com/leprosus/golang-log/v2"
+import "github.com/leprosus/golang-log"
 ```
 
 ## Settings
