@@ -75,4 +75,4 @@ log.Error("error line")
 * log.Debug("debug line") - writes message with debug data
 * log.Debug("debug line %d", 1) - writes message with debug data
 * log.Flush() - finish all process
-* log.Hook(func(message string){ /* do something */ }, "warn") - sets callback on all message with level more or equal "warn" ("warn", "error", "fatal")
+* log.Hook(func(log Log){ /* do something */ }, "warn") - sets callback on all message with level more or equal "warn" ("warn", "error")

@@ -7,7 +7,7 @@ import (
 )
 
 func TestGetMaxIncrement(t *testing.T) {
-	logPath := "./test.log"
+	logPath := "./test.Log"
 	archPath := logPath + ".1"
 
 	ioutil.WriteFile(archPath, []byte(""), os.ModePerm)
