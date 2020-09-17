@@ -2,6 +2,7 @@ package log
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -261,12 +262,12 @@ func printToStdout(l log) {
 		if l.level < WarnLevel {
 			_, err = fmt.Fprintln(os.Stdout, l.message)
 			if err != nil {
-				fmt.Printf("Can't write to stdout. Catch error %s\n", err.Error())
+				io.WriteString(os.Stderr, fmt.Sprintf("Can't write to stdout. Catch error %s\n", err.Error()))
 			}
 		} else {
 			_, err = fmt.Fprintln(os.Stderr, l.message)
 			if err != nil {
-				fmt.Printf("Can't write to stderr. Catch error %s\n", err.Error())
+				io.WriteString(os.Stderr, fmt.Sprintf("Can't write to stderr. Catch error %s\n", err.Error()))
 			}
 		}
 	}
@@ -277,14 +278,14 @@ func writeToFile(l log) {
 	if path != nil && len(path.(string)) > 0 {
 		filePath, err := getFilePath(len(l.message))
 		if err != nil {
-			fmt.Printf("Can't access to log file %s. Catch error %s\n", cfgPath.Load().(string), err.Error())
+			io.WriteString(os.Stderr, fmt.Sprintf("Can't access to log file %s. Catch error %s\n", cfgPath.Load().(string), err.Error()))
 
 			return
 		}
 
 		file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 		if err != nil {
-			fmt.Printf("Can't write log to file %s. Catch error: %s\n", filePath, err.Error())
+			io.WriteString(os.Stderr, fmt.Sprintf("Can't write log to file %s. Catch error: %s\n", filePath, err.Error()))
 
 			return
 		}
@@ -292,18 +293,18 @@ func writeToFile(l log) {
 		defer func() {
 			err = file.Sync()
 			if err != nil {
-				fmt.Printf("Can't sync log file %s. Catch error: %s\n", filePath, err.Error())
+				io.WriteString(os.Stderr, fmt.Sprintf("Can't sync log file %s. Catch error: %s\n", filePath, err.Error()))
 			}
 
 			err = file.Close()
 			if err != nil {
-				fmt.Printf("Can't sync log file %s. Catch error: %s\n", filePath, err.Error())
+				io.WriteString(os.Stderr, fmt.Sprintf("Can't sync log file %s. Catch error: %s\n", filePath, err.Error()))
 			}
 		}()
 
 		_, err = file.WriteString(l.message + "\n")
 		if err != nil {
-			fmt.Printf("Can't write log to file %s. Catch error: %s\n", filePath, err.Error())
+			io.WriteString(os.Stderr, fmt.Sprintf("Can't write log to file %s. Catch error: %s\n", filePath, err.Error()))
 		}
 	}
 }
@@ -319,7 +320,7 @@ func watchOld() {
 func deleteOld() {
 	paths, err := filepath.Glob(cfgPath.Load().(string) + string(filepath.Separator) + "*")
 	if err != nil {
-		fmt.Printf("Can't access to log file %s. Catch error %s\n", cfgPath.Load().(string), err.Error())
+		io.WriteString(os.Stderr, fmt.Sprintf("Can't access to log file %s. Catch error %s\n", cfgPath.Load().(string), err.Error()))
 
 		return
 	} else {
@@ -328,14 +329,14 @@ func deleteOld() {
 		for _, path := range paths {
 			file, err := os.Stat(path)
 			if err != nil {
-				fmt.Printf("Can't access to log file %s. Catch error %s\n", cfgPath.Load().(string), err.Error())
+				io.WriteString(os.Stderr, fmt.Sprintf("Can't access to log file %s. Catch error %s\n", cfgPath.Load().(string), err.Error()))
 
 				return
 			} else if !file.IsDir() {
 				if time.Now().Sub(file.ModTime()).Seconds() > ttl {
 					err = os.Remove(path)
 					if err != nil {
-						fmt.Printf("Can't remove old log file %s. Catch error %s\n", path, err.Error())
+						io.WriteString(os.Stderr, fmt.Sprintf("Can't remove old log file %s. Catch error %s\n", path, err.Error()))
 
 						return
 					}
