@@ -46,12 +46,12 @@ type hook struct {
 }
 
 type Log struct {
-	level     SeverityLevel
-	message   string
-	timestamp time.Time
-	path      string
-	line      int
-	full      string
+	Level     SeverityLevel
+	Message   string
+	TimeStamp time.Time
+	Path      string
+	Line      int
+	Full      string
 }
 
 func init() {
@@ -60,7 +60,7 @@ func init() {
 	cfgFormat.Store(func(log Log) string {
 		levelStr := "DEBUG"
 
-		switch log.level {
+		switch log.Level {
 		case InfoLevel:
 			levelStr = "INFO"
 		case NoticeLevel:
@@ -80,8 +80,8 @@ func init() {
 		data := []string{
 			time.Now().Format("2006-01-02 15:04:05"),
 			levelStr,
-			fmt.Sprint(log.line),
-			log.message}
+			fmt.Sprint(log.Line),
+			log.Message}
 
 		return strings.Join(data, "\t")
 	})
@@ -234,11 +234,11 @@ func moveFile(sourceFilePath string, destinationFilePath string) error {
 }
 
 func handle(l Log) {
-	if cfgLevel.Load().(SeverityLevel) >= l.level {
+	if cfgLevel.Load().(SeverityLevel) >= l.Level {
 		wg.Add(1)
-		l.timestamp = time.Now()
-		l.path, l.line = getFuncName()
-		l.full = cfgFormat.Load().(func(log Log) string)(l)
+		l.TimeStamp = time.Now()
+		l.Path, l.Line = getFuncName()
+		l.Full = cfgFormat.Load().(func(log Log) string)(l)
 		logChan <- l
 	}
 
@@ -251,7 +251,7 @@ func handle(l Log) {
 			var h hook
 			for log := range logChan {
 				h = cfgHook.Load().(hook)
-				if h.level >= log.level {
+				if h.level >= log.Level {
 					h.callback(log)
 				}
 
@@ -268,13 +268,13 @@ func printToStdout(l Log) {
 	if cfgStdOut.Load().(bool) {
 		var err error
 
-		if l.level < WarnLevel {
-			_, err = fmt.Fprintln(os.Stdout, l.full)
+		if l.Level < WarnLevel {
+			_, err = fmt.Fprintln(os.Stdout, l.Full)
 			if err != nil {
 				io.WriteString(os.Stderr, fmt.Sprintf("Can't write to stdout. Catch error %s\n", err.Error()))
 			}
 		} else {
-			_, err = fmt.Fprintln(os.Stderr, l.full)
+			_, err = fmt.Fprintln(os.Stderr, l.Full)
 			if err != nil {
 				io.WriteString(os.Stderr, fmt.Sprintf("Can't write to stderr. Catch error %s\n", err.Error()))
 			}
@@ -285,7 +285,7 @@ func printToStdout(l Log) {
 func writeToFile(l Log) {
 	path := cfgPath.Load()
 	if path != nil && len(path.(string)) > 0 {
-		filePath, err := getFilePath(len(l.full))
+		filePath, err := getFilePath(len(l.Full))
 		if err != nil {
 			io.WriteString(os.Stderr, fmt.Sprintf("Can't access to log file %s. Catch error %s\n", cfgPath.Load().(string), err.Error()))
 
@@ -311,7 +311,7 @@ func writeToFile(l Log) {
 			}
 		}()
 
-		_, err = file.WriteString(l.full + "\n")
+		_, err = file.WriteString(l.Full + "\n")
 		if err != nil {
 			io.WriteString(os.Stderr, fmt.Sprintf("Can't write log to file %s. Catch error: %s\n", filePath, err.Error()))
 		}
@@ -367,65 +367,65 @@ func Hook(callback func(log Log), level string) {
 }
 
 func Emergency(message string) {
-	handle(Log{level: EmergencyLevel, message: message})
+	handle(Log{Level: EmergencyLevel, Message: message})
 }
 
 func Alert(message string) {
-	handle(Log{level: AlertLevel, message: message})
+	handle(Log{Level: AlertLevel, Message: message})
 }
 
 func Critical(message string) {
-	handle(Log{level: CriticalLevel, message: message})
+	handle(Log{Level: CriticalLevel, Message: message})
 }
 
 func Error(message string) {
-	handle(Log{level: ErrorLevel, message: message})
+	handle(Log{Level: ErrorLevel, Message: message})
 }
 
 func Warn(message string) {
-	handle(Log{level: WarnLevel, message: message})
+	handle(Log{Level: WarnLevel, Message: message})
 }
 
 func Notice(message string) {
-	handle(Log{level: NoticeLevel, message: message})
+	handle(Log{Level: NoticeLevel, Message: message})
 }
 
 func Info(message string) {
-	handle(Log{level: InfoLevel, message: message})
+	handle(Log{Level: InfoLevel, Message: message})
 }
 
 func Debug(message string) {
-	handle(Log{level: DebugLevel, message: message})
+	handle(Log{Level: DebugLevel, Message: message})
 }
 
 func EmergencyFmt(message string, args ...interface{}) {
-	handle(Log{level: EmergencyLevel, message: fmt.Sprintf(message, args...)})
+	handle(Log{Level: EmergencyLevel, Message: fmt.Sprintf(message, args...)})
 }
 
 func AlertFmt(message string, args ...interface{}) {
-	handle(Log{level: AlertLevel, message: fmt.Sprintf(message, args...)})
+	handle(Log{Level: AlertLevel, Message: fmt.Sprintf(message, args...)})
 }
 
 func CriticalFmt(message string, args ...interface{}) {
-	handle(Log{level: CriticalLevel, message: fmt.Sprintf(message, args...)})
+	handle(Log{Level: CriticalLevel, Message: fmt.Sprintf(message, args...)})
 }
 
 func ErrorFmt(message string, args ...interface{}) {
-	handle(Log{level: ErrorLevel, message: fmt.Sprintf(message, args...)})
+	handle(Log{Level: ErrorLevel, Message: fmt.Sprintf(message, args...)})
 }
 
 func WarnFmt(message string, args ...interface{}) {
-	handle(Log{level: WarnLevel, message: fmt.Sprintf(message, args...)})
+	handle(Log{Level: WarnLevel, Message: fmt.Sprintf(message, args...)})
 }
 
 func NoticeFmt(message string, args ...interface{}) {
-	handle(Log{level: NoticeLevel, message: fmt.Sprintf(message, args...)})
+	handle(Log{Level: NoticeLevel, Message: fmt.Sprintf(message, args...)})
 }
 
 func InfoFmt(message string, args ...interface{}) {
-	handle(Log{level: InfoLevel, message: fmt.Sprintf(message, args...)})
+	handle(Log{Level: InfoLevel, Message: fmt.Sprintf(message, args...)})
 }
 
 func DebugFmt(message string, args ...interface{}) {
-	handle(Log{level: DebugLevel, message: fmt.Sprintf(message, args...)})
+	handle(Log{Level: DebugLevel, Message: fmt.Sprintf(message, args...)})
 }
