@@ -80,6 +80,7 @@ func init() {
 		data := []string{
 			time.Now().Format("2006-01-02 15:04:05"),
 			levelStr,
+			log.Path,
 			fmt.Sprint(log.Line),
 			log.Message}
 
@@ -154,10 +155,10 @@ func getFuncName() (path string, line int) {
 	var scriptName string
 	_, scriptName, line, _ = runtime.Caller(3)
 
-	appPath, _ := os.Getwd()
-	appPath += string(os.PathSeparator)
+	pathMark := filepath.Join("go", "src")
+	ix := strings.Index(scriptName, pathMark)
 
-	path = strings.Replace(scriptName, appPath, "", -1)
+	path = scriptName[ix+len(pathMark)+1:]
 
 	return
 }
