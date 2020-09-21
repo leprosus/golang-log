@@ -151,14 +151,26 @@ func getLevelFromString(level string) SeverityLevel {
 	}
 }
 
-var mark = filepath.Join("go", "src")
+var (
+	srcMark = filepath.Join("go", "src")
+	modMark = filepath.Join("go", "pkg", "mod")
+)
 
 func getFuncName() (path string, line int) {
 	_, path, line, _ = runtime.Caller(3)
 
-	ix := strings.Index(path, mark)
+	var ix = -1
+	srcIx := strings.Index(path, srcMark)
+	modIx := strings.Index(path, modMark)
+
+	if srcIx > 0 {
+		ix = srcIx
+	} else if modIx > 0 {
+		ix = modIx
+	}
+
 	if ix > -1 {
-		path = path[ix+len(mark)+1:]
+		path = path[ix+len(srcMark)+1:]
 	}
 
 	return
