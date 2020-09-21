@@ -160,17 +160,11 @@ func getFuncName() (path string, line int) {
 	_, path, line, _ = runtime.Caller(3)
 
 	var ix = -1
-	srcIx := strings.Index(path, srcMark)
-	modIx := strings.Index(path, modMark)
 
-	if srcIx > 0 {
-		ix = srcIx
-	} else if modIx > 0 {
-		ix = modIx
-	}
-
-	if ix > -1 {
+	if ix = strings.Index(path, srcMark); ix > -1 {
 		path = path[ix+len(srcMark)+1:]
+	} else if ix = strings.Index(path, modMark); ix > -1 {
+		path = path[ix+len(modMark)+1:]
 	}
 
 	return
