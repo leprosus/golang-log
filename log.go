@@ -95,6 +95,11 @@ func init() {
 }
 
 func Path(path string) (err error) {
+	path, err = filepath.Abs(path)
+	if err != nil {
+		return
+	}
+
 	cfgPath.Store(path)
 
 	err = os.MkdirAll(path, 0755)
