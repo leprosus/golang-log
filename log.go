@@ -253,6 +253,11 @@ func handle(l Log) {
 	if cfgLevel.Load().(SeverityLevel) >= l.Level {
 		wg.Add(1)
 		l.TimeStamp = time.Now()
+
+		if len(l.Message) > 0 {
+			l.Message = strings.ToUpper(l.Message[0:1]) + l.Message[1:]
+		}
+
 		l.Path, l.Line = getFuncName()
 		l.Full = cfgFormat.Load().(func(log Log) string)(l)
 		logChan <- l
