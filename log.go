@@ -29,6 +29,7 @@ const (
 var (
 	once         = &sync.Once{}
 	wg           = &sync.WaitGroup{}
+	mx           = &sync.Mutex{}
 	logChan      = make(chan Log, 1024)
 	cfgLevel     = &atomic.Value{}
 	cfgPath      = &atomic.Value{}
@@ -251,7 +252,10 @@ func moveFile(sourceFilePath string, destinationFilePath string) error {
 
 func handle(l Log) {
 	if cfgLevel.Load().(SeverityLevel) >= l.Level {
+		mx.Lock()
 		wg.Add(1)
+		mx.Unlock()
+
 		l.TimeStamp = time.Now()
 
 		if len(l.Message) > 0 {
@@ -279,7 +283,9 @@ func handle(l Log) {
 				printToStdout(log)
 				writeToFile(log)
 
+				mx.Lock()
 				wg.Done()
+				mx.Unlock()
 			}
 		}(logChan)
 	})
