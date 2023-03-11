@@ -142,7 +142,7 @@ func getLevelFromString(level string) SeverityLevel {
 		return InfoLevel
 	case "notice":
 		return NoticeLevel
-	case "warn":
+	case "warn", "warning":
 		return WarnLevel
 	case "error":
 		return ErrorLevel
