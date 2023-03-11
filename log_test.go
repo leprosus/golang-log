@@ -1,7 +1,6 @@
 package log
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 )
@@ -10,10 +9,19 @@ func TestGetMaxIncrement(t *testing.T) {
 	logPath := "./test.log"
 	archPath := logPath + ".1"
 
-	ioutil.WriteFile(archPath, []byte(""), os.ModePerm)
-	defer os.Remove(archPath)
+	err := os.WriteFile(archPath, []byte(""), os.ModePerm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err = os.Remove(archPath)
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 
-	increment, err := getMaxIncrement(logPath)
+	var increment int
+	increment, err = getMaxIncrement(logPath)
 	if err != nil {
 		t.Fatal(err.Error())
 	} else if increment != 1 {

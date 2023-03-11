@@ -116,8 +116,10 @@ func LevelAsString(level string) {
 	Level(getLevelFromString(level))
 }
 
-func Format(format func(level int, line string, message string) string) {
-	cfgFormat.Store(format)
+func Format(format func(level SeverityLevel, line int, message string) string) {
+	cfgFormat.Store(func(log Log) string {
+		return format(log.Level, log.Line, log.Message)
+	})
 }
 
 func SizeLimit(size int64) {

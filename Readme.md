@@ -53,7 +53,7 @@ log.Error("error line")
 * log.Path("./log") - sets directory path to save log files
 * log.Level(log.Debug) - sets log level by constant
 * log.LevelAsString("debug") - sets log level by string
-* log.Format(func(level SeverityLevel, line string, message string) string) - sets function to prepare format log line
+* log.Format(func(level SeverityLevel, line int, message string) string) - sets function to prepare format log line
 * log.SizeLimit(2 * log.megaByte) - sets log file size limit (if value is less zero then size limit is off)
 * log.Stdout(true) - sets log output to stdout
 * log.TTL(3600) - sets time-to-live of log files (all old files will be removed)
