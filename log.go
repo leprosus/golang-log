@@ -297,7 +297,7 @@ func printToStdout(l Log) {
 	if cfgStdOut.Load().(bool) {
 		var err error
 
-		if l.Level < WarnLevel {
+		if l.Level >= WarnLevel {
 			_, err = fmt.Fprintln(os.Stdout, l.Full)
 			if err != nil {
 				_, _ = io.WriteString(os.Stderr, fmt.Sprintf("Can't write to stdout. Catch error %s\n", err.Error()))
